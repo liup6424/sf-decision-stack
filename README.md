@@ -1,17 +1,18 @@
 # sf-decision-stack
 
-Two small low-latency LLMs over SF (simplefunctions) data:
+Two small low-latency LLMs over SF (simplefunctions) data, decoupled from
+the live system (read-only data access, no integration, paper-only):
 
-- **Analyst** — produces alpha (trade ideas).
-- **Trader** — executes alpha (orders).
+- **Analyst** — produces alpha (Qwen3-3B + LoRA + numerical adapter, target p95 ≤ 3 s).
+- **Trader** — executes alpha (Qwen3-1.7B + grammar-constrained JSON, target p95 ≤ 200 ms).
 
-Both fine-tuned (LoRA + numerical adapter) from a Qwen3 pretrained base via
-a two-stage SFT-then-GRPO recipe, distilled from SF's existing Gemini 2.5
-Flash production decision pipeline plus the `trade_ideas` and `thesis_state`
-ground truth.
+Trained via **outcome-only supervision** — no opinion distillation. The only
+training signal is the realized future return computed from price history.
+Two stages: format-only SFT (~$2) then GRPO (~$30-60) per Fin-R1 recipe.
 
-**Status:** SPEC v0 written 2026-04-28 (autonomous research session).
-No code. Awaiting Patrick review before Phase 1.
+**Hard cost cap: $100 Modal**, abort trigger at $80.
+
+**Status:** SPEC v1 frozen 2026-04-28. Awaiting Patrick `/compact` and Phase 1.0 start.
 
 ## Read order for newcomers
 
