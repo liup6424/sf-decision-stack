@@ -559,6 +559,100 @@ Headroom: ~$30 above plan.
 
 ---
 
+## 11.5. Mini-experiment results (2026-04-29 ~05:50 UTC)
+
+### Experiment §12.1 — indicator predictive power (preliminary)
+
+Pulled `/api/public/market/{ticker}/history?hours=72` for 30 markets meeting a loose
+quality filter (price ∈ [10, 90], volume24h > 0). 17 markets had ≥30 history rows;
+4,372 samples total. Computed correlations between current state (price, CRI,
+15-min delta) and forward returns at 4h and 24h.
+
+**Pooled cross-market Pearson correlations (n=4,372):**
+
+| | ret_4h | ret_24h |
+|---|---|---|
+| price_t | −0.18 | −0.32 |
+| CRI | +0.08 | +0.06 |
+| delta_15min | −0.17 | −0.12 |
+
+**Per-market `price_t → ret_4h` correlation distribution (17 markets):**
+
+| | value |
+|---|---|
+| median | −0.84 |
+| mean | −0.62 |
+| positive markets | 1 / 17 |
+| top market: KXJOBLESSCLAIMS | n=15, corr=−0.979 |
+| top weather: KXHIGHMIA | n=27, corr=−0.924 |
+| KXLCATTLEW | n=82, corr=−0.888 |
+
+**Mean return all samples (24h forward), by venue:**
+- Kalshi: n=1,974, mean=+0.47¢, std=10.66¢
+- Polymarket: n=1,693, mean=+0.18¢, std=14.45¢
+
+### Reading
+
+The per-market correlation of −0.84 is **enormous** for finance. Three possible
+interpretations, in decreasing order of "tradeable":
+
+1. **Real mean reversion within each market.** Prices oscillate around a slow-moving
+   fair value; extreme deviations get faded.
+2. **Resolution-convergence artifact.** Markets resolve at a fixed time. As tau→0,
+   price→outcome ∈ {0, 100}. If outcome is, say, 50, then early prices at 80 will
+   come down to 50; that registers as negative price→ret correlation but is *not*
+   tradeable — the bias only manifests as resolution approaches.
+3. **Sample-period artifact.** Most of the sampled markets are weather / 1-day
+   commodity markets that resolved within the 72h history window. Selection bias.
+
+The pooled cross-market correlation (−0.18) is much weaker than per-market median
+(−0.84). This pattern is *consistent with* both real mean-reversion (each market
+reverts around its own mean, but means differ across markets) and resolution
+convergence (as different markets resolve at different price levels).
+
+### What this means for the SPEC
+
+- The signal is **detectable in the data**, but the test was confounded by
+  resolution-convergence. A clean test requires controlling for time-to-resolution
+  (computing ret over horizons that are uniformly < tau, not crossing resolution).
+- The pooled cross-market correlation (−0.18 to −0.32 on price_t) is itself
+  **non-trivial** and *would* be tradeable if it generalizes. Need to confirm with
+  a larger out-of-resolution sample.
+- **Per-market normalization is critical.** A model trained on raw prices across
+  heterogeneous markets will see the −0.18 pooled signal and miss the per-market
+  −0.84 signal. v2's adapter should normalize price by per-market rolling mean
+  (e.g., price_z = (price_t − rolling_mean_24h) / rolling_std_24h), giving the
+  model a clean mean-reversion feature.
+- The simplest baseline strategy ("fade prices > rolling mean") may already
+  capture most of the alpha. **The LLM has to add value beyond this baseline** to
+  justify its existence.
+
+### Decision (D-025)
+
+Add per-market price normalization (`price_z`) as the 9th adapter input channel
+(replacing or augmenting the raw mid-price). Baseline strategy (rule-based mean
+reversion) is added to the eval suite as a comparator that the LLM must beat.
+
+### Decision (D-026)
+
+The mini-experiment is preliminary (1 market = 412 samples dominated, then 17
+markets; weather + commodity heavy). Phase 1.5 must repeat at scale (≥ 200
+markets, ≥ 30-day history per market, controlled for resolution timing) before
+SPEC v2 final freeze. If the signal disappears under proper time-to-expiry
+controls, **the project pivots or stops.**
+
+### Caveats
+
+- Sample is from 2026-04-27 18:00 UTC to 2026-04-29 05:50 UTC; one cross-section
+  of "market state at one moment in time, looking back 72h."
+- The 4h horizon assumes 16 indicator rows, but cadence is uneven. The actual
+  H_eff varies. Approximation is fine for a punchline; not for SPEC v2 numbers.
+- Public API only exposes `iy`, `cri`, `price`, `delta` in `indicatorHistory`.
+  Cannot test predictive power of RV, VR, IAR, LAS, CVR via this endpoint.
+  Phase 1.5 (DB or R2 access) probes the full 8-indicator set.
+
+---
+
 ## 12. Open mini-experiments before SPEC v2 freeze
 
 These are ≤ $0 / local-only validations to do *before* writing v2. Goal: catch any remaining false assumptions.
